@@ -1,62 +1,64 @@
 {
   "name": "solana_meme_fee_volume_criteria",
-  "version": "1.1",
-  "description": "Tiêu chí chuẩn đánh giá Fee và Volume 24h cho coin meme Solana giai đoạn Accumulation + Consolidation. Dùng cho Auto Grok / Auto Filter. (Đã điều chỉnh theo dữ liệu thực tế 2026)",
+  "version": "1.2",
+  "description": "Bộ tiêu chí tham khảo để đánh giá Fee, Volume và thanh khoản meme coin Solana trong giai đoạn tích lũy/đi ngang. Heuristic, không phải khuyến nghị giao dịch.",
   "last_updated": "2026-11-09",
   "applicable_to": ["Raydium", "Meteora", "PumpSwap", "post-bonding-curve coins"],
+  "input_schema": {
+    "age_hours": "Token age in hours at snapshot",
+    "market_cap_usd": "USD market capitalization at snapshot",
+    "volume_24h_usd": "USD trading volume over the 24h window ending at snapshot",
+    "liquidity_usd": "USD pool liquidity at snapshot; use the same pool scope as volume",
+    "fee_24h_usd": "USD trading fees attributable to the same pool(s) and 24h window",
+    "cr10_pct": "Share of circulating supply held by top 10 non-excluded owners, in percent",
+    "holder_growth_24h_pct": "Percent change in unique holders over the prior 24h",
+    "price_action": "One of consolidation, higher_low, sideways, weak, breakdown",
+    "pool_fee_tier_pct": "Optional advertised pool fee percentage for context only"
+  },
   "criteria": {
     "basic_requirements": {
       "min_age_hours": 48,
-      "market_cap_usd": {
-        "min": 50000,
-        "max": 5000000,
-        "note": "Có thể điều chỉnh theo risk profile"
-      },
+      "market_cap_usd": {"min": 50000, "max": 5000000},
       "liquidity_usd_min": 20000,
       "liquidity_to_mc_min_percent": 5
     },
     "fee_and_volume": {
       "fee_to_volume_24h": {
-        "description": "Fee_24h / Volume_24h",
+        "description": "fee_24h_usd / volume_24h_usd * 100",
         "expected_range_percent": [0.25, 1.0],
         "reject_if_below_percent": 0.15,
         "reject_if_above_percent": 1.5,
-        "note": "Phải khớp với fee tier thực tế của pool"
+        "pool_tier_comparison_tolerance_percentage_points": 0.2,
+        "note": "Fee/volume quan sát được không nhất thiết bằng fee tier danh nghĩa; khác biệt chỉ tạo cảnh báo, không tự động trừ điểm."
       },
       "volume_to_market_cap_24h": {
-        "description": "Volume_24h / Market Cap",
+        "description": "volume_24h_usd / market_cap_usd * 100",
         "ideal_range_percent": [5, 30],
         "acceptable_range_percent": [5, 50],
         "reject_if_below_percent": 2,
-        "reject_if_above_percent": 80,
-        "importance": "highest",
-        "note": "Điều chỉnh từ 5-15% lên 5-30% theo dữ liệu thực tế Solana meme 2026 (healthy baseline 10-50%)"
+        "reject_if_above_percent": 80
       },
       "volume_to_liquidity_24h": {
-        "description": "Volume_24h / Liquidity",
+        "description": "volume_24h_usd / liquidity_usd",
         "ideal_range": [0.5, 2.0],
-        "reject_if_above": 5.0,
-        "note": "Cao bất thường → pool mỏng hoặc bot/wash"
+        "reject_if_above": 5.0
       },
       "fee_consistency_3d": {
-        "description": "Fee trung bình 3 ngày gần nhất ổn định",
-        "reject_if": "spike > 5x rồi giảm mạnh"
+        "description": "Fee theo ngày trong 3 ngày gần nhất",
+        "spike_warning_multiple": 5,
+        "note": "Scorer hiện tại không tự chấm độ ổn định 3 ngày; cần dữ liệu chuỗi ngày và kiểm tra riêng."
       }
     },
     "additional_criteria": {
-      "liquidity_to_mc_percent": {
-        "good": 5,
-        "excellent": 10
-      },
-      "holder_growth_24h": "positive_gradual",
+      "liquidity_to_mc_percent": {"good": 5, "excellent": 10},
       "top10_holder_cr10_percent_max": 35,
-      "price_action": "consolidation_or_higher_low",
-      "smart_money_net_buy": "preferred"
+      "price_action_values": ["consolidation", "higher_low", "sideways", "weak", "breakdown"]
     }
   },
   "scoring": {
     "total": 100,
     "pass_threshold": 70,
+    "warn_threshold": 60,
     "breakdown": {
       "volume_to_mc_in_range": 30,
       "liquidity_to_mc": 20,
@@ -64,45 +66,87 @@
       "volume_to_liquidity": 15,
       "holder_and_cr10": 10,
       "price_action": 10
-    }
+    },
+    "rubric": {
+      "band_convention": "min inclusive, max exclusive; null max means no upper bound",
+      "volume_to_mc_pct": [
+        {"min": 0, "max": 2, "points": 0},
+        {"min": 2, "max": 5, "points": 10},
+        {"min": 5, "max": 15, "points": 22},
+        {"min": 15, "max": 30.000001, "points": 30},
+        {"min": 30.000001, "max": 40, "points": 20},
+        {"min": 40, "max": 50, "points": 10},
+        {"min": 50, "max": null, "points": 0}
+      ],
+      "liquidity_to_mc_pct": [
+        {"min": 0, "max": 5, "points": 0},
+        {"min": 5, "max": 8, "points": 12},
+        {"min": 8, "max": 10, "points": 17},
+        {"min": 10, "max": null, "points": 20}
+      ],
+      "fee_to_volume_pct": [
+        {"min": 0, "max": 0.15, "points": 0},
+        {"min": 0.15, "max": 0.25, "points": 8},
+        {"min": 0.25, "max": 1.000001, "points": 15},
+        {"min": 1.000001, "max": 1.5, "points": 8},
+        {"min": 1.5, "max": null, "points": 0}
+      ],
+      "volume_to_liquidity": [
+        {"min": 0, "max": 0.2, "points": 0},
+        {"min": 0.2, "max": 0.5, "points": 3},
+        {"min": 0.5, "max": 2.000001, "points": 15},
+        {"min": 2.000001, "max": 3, "points": 8},
+        {"min": 3, "max": 5.000001, "points": 3},
+        {"min": 5.000001, "max": null, "points": 0}
+      ],
+      "cr10_pct": [
+        {"min": 0, "max": 35.000001, "points": 7},
+        {"min": 35.000001, "max": 45, "points": 5},
+        {"min": 45, "max": 60, "points": 2},
+        {"min": 60, "max": null, "points": 0}
+      ],
+      "holder_growth_24h_pct": [
+        {"min": null, "max": 0, "points": 0},
+        {"min": 0, "max": 5, "points": 3},
+        {"min": 5, "max": null, "points": 1}
+      ],
+      "price_action_points": {
+        "consolidation": 10,
+        "higher_low": 10,
+        "sideways": 7,
+        "weak": 3,
+        "breakdown": 0
+      },
+      "hard_filters": {
+        "min_age_hours": 48,
+        "market_cap_min_usd": 50000,
+        "market_cap_max_usd": 5000000,
+        "liquidity_min_usd": 20000,
+        "liquidity_to_mc_min_pct": 5,
+        "volume_to_mc_min_pct": 2,
+        "volume_to_mc_max_pct": 80,
+        "fee_to_volume_min_pct": 0.15,
+        "fee_to_volume_max_pct": 1.5,
+        "volume_to_liquidity_max": 5
+      }
+    },
+    "notes": [
+      "Hard filters quyết định reject; điểm không thể đảo ngược hard filter.",
+      "Thiếu dữ liệu làm kết quả incomplete, không tự coi dữ liệu thiếu là 0.",
+      "Holder concentration phải loại trừ pool/LP, burn, treasury và ví sàn đã biết khi nguồn dữ liệu cho phép.",
+      "Fee consistency 3 ngày chưa nằm trong điểm vì đầu vào hiện chỉ là snapshot 24h."
+    ]
   },
   "recommended_data_sources": [
-    {
-      "name": "Birdeye",
-      "url": "https://birdeye.so",
-      "useful_for": ["volume", "liquidity", "holders", "smart_money"]
-    },
-    {
-      "name": "DexScreener",
-      "url": "https://dexscreener.com",
-      "useful_for": ["volume", "liquidity", "price_action", "pairs"]
-    },
-    {
-      "name": "DefiLlama",
-      "url": "https://defillama.com/fees/chain/solana",
-      "useful_for": ["protocol_fees", "volume_reference"]
-    },
-    {
-      "name": "MemeFees",
-      "url": "https://memefees.com",
-      "useful_for": ["launchpad_fee_structure"]
-    },
-    {
-      "name": "Solscan",
-      "url": "https://solscan.io",
-      "useful_for": ["holders", "transactions"]
-    },
-    {
-      "name": "Bubblemaps",
-      "url": "https://bubblemaps.io",
-      "useful_for": ["holder_distribution", "cr10"]
-    }
+    {"name": "Birdeye", "url": "https://birdeye.so", "useful_for": ["volume", "liquidity", "holders"]},
+    {"name": "DexScreener", "url": "https://dexscreener.com", "useful_for": ["volume", "liquidity", "price_action", "pairs"]},
+    {"name": "Solscan", "url": "https://solscan.io", "useful_for": ["holders", "transactions"]},
+    {"name": "Bubblemaps", "url": "https://bubblemaps.io", "useful_for": ["holder_distribution", "cr10"]}
   ],
   "notes": [
-    "Fee và Volume có tương quan gần tuyến tính vì Fee ≈ Volume × Fee rate của pool.",
-    "Ưu tiên volume ổn định nhiều ngày hơn volume spike một lần.",
-    "Luôn kiểm tra fee tier thực tế của pool thay vì hardcode.",
-    "Ngưỡng V/MC đã điều chỉnh thành 5-30% theo dữ liệu thực tế (Solana Holder Bot 2026, Fomo Trending, Raydium Docs).",
-    "Ngưỡng có thể điều chỉnh theo điều kiện thị trường (bull/bear)."
+    "Các ngưỡng là giả thuyết heuristic, chưa được xác nhận là lợi thế đầu tư; cần backtest ngoài mẫu và tính cả token mất thanh khoản/rug.",
+    "Dùng cùng định nghĩa pool, quote currency, cửa sổ thời gian và timestamp cho volume, liquidity, fee.",
+    "Fee/volume là tỷ lệ quan sát, không đồng nhất với fee tier danh nghĩa của pool.",
+    "Không dùng cấu hình này làm tín hiệu giao dịch tự động nếu chưa có kiểm định, giới hạn rủi ro và kiểm tra dữ liệu."
   ]
 }
